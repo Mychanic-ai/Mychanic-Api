@@ -1,7 +1,14 @@
 import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { withApiLogger } from '@/lib/withApiLogger'
 import { logger } from '@/lib/logger'
+
+const EXCLUDED_SHOP_IDS = [
+  '31832d5e-7e74-427d-b7b3-54441bca1636',
+  '0da3f815-5c55-4db7-8e0b-e634775e571e',
+  '47f25305-18e3-4c98-9aa5-56206e74e037'
+]
 
 
 interface ShopMetrics {
@@ -67,6 +74,7 @@ export const GET = withApiLogger(async (request: NextRequest) => {
     const { data: shops, error: shopsError } = await supabase
       .from('shops')
       .select('id, name, address, city, state, phone_number')
+      .not('id', 'in', `(${EXCLUDED_SHOP_IDS.join(',')})`)
       .order('name')
 
     if (shopsError) {
@@ -118,13 +126,63 @@ export const GET = withApiLogger(async (request: NextRequest) => {
       )
     }
 
+    // Use admin client to bypass RLS for cross-user queries
+    const adminSupabase = createAdminClient()
 
-    // Group sessions by shop_id and count them
+    // Fetch all users grouped by shop so we can count their interactive sessions
+    const shopIds = shops.map((s) => s.id)
+    const { data: shopUsers, error: shopUsersError } = await adminSupabase
+      .from('users')
+      .select('id, shop_id')
+      .in('shop_id', shopIds)
+
+    if (shopUsersError) {
+      logger.error({ event: 'supabase_error', table: 'users', operation: 'select', code: shopUsersError.code, message: shopUsersError.message })
+      return NextResponse.json({ error: 'Failed to fetch shop users' }, { status: 500 })
+    }
+
+    // Build user_id → shop_id map
+    const userShopMap: Record<string, string> = {}
+    for (const u of shopUsers ?? []) {
+      if (u.shop_id) userShopMap[u.id] = u.shop_id
+    }
+
+    const allUserIds = Object.keys(userShopMap)
+
+    // Fetch interactive sessions for those users within the time range
+    const interactiveSessionsByShop: Record<string, number> = {}
+    if (allUserIds.length > 0) {
+      const { data: interactiveSessions, error: interactiveError } = await adminSupabase
+        .from('interactive_diagnostic_sessions')
+        .select('user_id')
+        .in('user_id', allUserIds)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+
+      if (interactiveError) {
+        logger.error({ event: 'supabase_error', table: 'interactive_diagnostic_sessions', operation: 'select', code: interactiveError.code, message: interactiveError.message })
+        return NextResponse.json({ error: 'Failed to count interactive diagnostic sessions' }, { status: 500 })
+      }
+
+      for (const session of interactiveSessions ?? []) {
+        const shopId = userShopMap[session.user_id]
+        if (shopId) {
+          interactiveSessionsByShop[shopId] = (interactiveSessionsByShop[shopId] ?? 0) + 1
+        }
+      }
+    }
+
+    // Group diagnostic_sessions by shop_id and count them
     const countsByShop: Record<string, number> = {}
     for (const session of sessionCounts ?? []) {
       if (session.shop_id) {
         countsByShop[session.shop_id] = (countsByShop[session.shop_id] ?? 0) + 1
       }
+    }
+
+    // Merge interactive session counts into countsByShop
+    for (const [shopId, count] of Object.entries(interactiveSessionsByShop)) {
+      countsByShop[shopId] = (countsByShop[shopId] ?? 0) + count
     }
     
 

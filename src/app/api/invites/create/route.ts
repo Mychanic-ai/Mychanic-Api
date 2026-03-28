@@ -225,7 +225,7 @@ export const POST = withApiLogger(async (request: NextRequest) => {
     }
 
     // 10. Generate invite link and send via Resend
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.mychanic.com'
+    const appUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.mychanic.com'
 
     try {
       const resendApiKey = process.env.RESEND_API_KEY
