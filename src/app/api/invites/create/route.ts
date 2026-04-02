@@ -237,7 +237,7 @@ export const POST = withApiLogger(async (request: NextRequest) => {
         const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
           type: linkType,
           email: email.toLowerCase().trim(),
-          options: { redirectTo: `${appUrl}/auth/callback?next=/invite/setup` },
+          options: { redirectTo: `${appUrl}/invite` },
         })
 
         let inviteLink = appUrl
