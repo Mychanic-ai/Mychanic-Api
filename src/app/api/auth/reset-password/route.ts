@@ -30,22 +30,20 @@ export const POST = withApiLogger(async (request: NextRequest) => {
     }
 
     try {
-      // Callback lives on the API (this server) since it does the code exchange
-      let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://mychanic.ai'
-      if (apiUrl.startsWith('localhost')) {
-        apiUrl = `http://${apiUrl}`
-      }
+      // Use the site URL so the /api/ path is proxied through the site to this server.
+      // This URL must be in the Supabase project's allowed redirect URLs list.
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.mychanic.ai'
 
       // Generate recovery link using Supabase admin API
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
         type: 'recovery',
         email: email.toLowerCase().trim(),
         options: {
-          redirectTo: `${apiUrl}/api/auth/reset-password-callback`,
+          redirectTo: `${siteUrl}/api/auth/reset-password-callback`,
         },
       })
 
-      let resetLink = `${apiUrl}/api/auth/reset-password-callback`
+      let resetLink = `${siteUrl}/api/auth/reset-password-callback`
       
       if (!linkError && linkData?.properties?.action_link) {
         resetLink = linkData.properties.action_link
