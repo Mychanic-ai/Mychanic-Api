@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger'
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
+  const next = request.nextUrl.searchParams.get('next') || '/dashboard'
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8080'
 
   if (!code) {
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     logger.info({ event: 'oauth_login', userId: data.user.id, provider: 'google' })
 
-    return NextResponse.redirect(`${siteUrl}/dashboard`)
+    return NextResponse.redirect(`${siteUrl}${next}`)
   } catch (error) {
     logger.error({ event: 'oauth_callback_exception', message: error instanceof Error ? error.message : String(error) })
     return NextResponse.redirect(`${siteUrl}/login?message=Authentication failed`)
